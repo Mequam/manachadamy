@@ -1,0 +1,313 @@
+<canvas id="gameboard" width="400" height="200"></canvas>
+<script>
+
+//this is the array containing entity objects for the web browser to display
+var player_array = [];
+var proj_array = [];
+//class
+function Tile(rx=0,ry=0,xscale=1,yscale=1,color="#0000FF")
+{
+	//this is the class that the GameObj class uses to draw its shape
+	//rx and ry are reletive cords to the game obj x and y
+	this.rx=rx;
+	this.ry=ry;
+	//xscale and yscale are the scale of the square rect in x and y
+	this.xscale=xscale;
+	this.yscale=yscale;
+	//take a guess
+	this.color=color
+}
+
+//class
+function GameObj(x,y,t)
+{
+	//this is the main class that the program uses to keep track of all of the actors
+	this.x = x;
+	this.y = y;
+	this.t_array = t;
+}
+function Plr(GameObj,uname)
+{
+	this.gameobj = GameObj;
+	this.uname = uname;
+}
+
+function draw(Ctx,Obj)
+{
+	//this function loops over the tiles of game objects and draws them to the screen
+	var i = 0;
+	while ( i < Obj.t_array.length)
+	{
+		Ctx.beginPath();
+		Ctx.rect(
+			 Obj.x + Obj.t_array[i].rx
+			,Obj.y + Obj.t_array[i].ry
+			,Obj.t_array[i].xscale
+			,Obj.t_array[i].yscale
+			);
+		Ctx.fillStyle = Obj.t_array[i].color;
+		Ctx.fill();
+		i += 1;
+	}
+}
+
+function erase(Ctx,Obj)
+{
+	//replaces a game object with white, could easily be jerry riged for other colors
+	var i = 0;
+	Ctx.beginPath();
+	Ctx.fillStyle = "#000000"; //rig jerry here
+        while ( i < Obj.t_array.length)
+        {
+
+                Ctx.rect(
+                         Obj.x + Obj.t_array[i].rx
+                        ,Obj.y + Obj.t_array[i].ry
+                        ,Obj.t_array[i].xscale
+                        ,Obj.t_array[i].yscale
+                        );
+		Ctx.fill();
+                i += 1;
+        }
+
+}
+function move(Ctx,Obj,x,y)
+{
+	//this is a very simple function that moves a gameobject over a white screen
+	//and only a white screen, desined only for early testing purposes
+	erase(Ctx,Obj);
+	Obj.x+=x;
+	Obj.y+=y;
+	draw(Ctx,Obj);
+}
+function force_move(Ctx,Obj,x,y)
+{
+	//this is a very simple function that moves a gameobject over a white screen TO A SPECIFIED LOCATION
+	//and only a white screen, desined only for early testing purposes
+	erase(Ctx,Obj);
+	Obj.x=x;
+	Obj.y=y;
+	draw(Ctx,Obj);
+}
+
+var canvas = document.getElementById("gameboard");
+var Ctx = canvas.getContext("2d");
+var mx, my;
+//this is the array that the client uses for key bindings layed out as follows [w,a,s,d,1,2,3,4,5,6,7,8,9,0]
+var keybind = [87,65,83,68];
+//this tells the gameclient what their username is, going to need a way to set it from the gameclient, for now dom works fine
+var uname = "j0hn";
+//var keybind = [];
+//TAG:2
+function main() 
+{
+	var Ctx = canvas.getContext("2d");
+	var i = 0;
+	var t__array = [];
+	while (i < 4)
+	{
+		t__array[i] = new Tile(i * 10,10 * i,10,10,"#000000");
+		i += 1;
+	}
+	t__array[4] = new Tile(40,40,10,10,"#FF00FF");
+	var gameObj = new GameObj(0,0,t__array);
+	draw(Ctx,gameObj);
+
+
+}
+
+function addProj(proj_array,x,y)
+{
+	//test color to start, going to need to specifiy color in the future
+	var t_arr = [];
+	t_arr[0] = new Tile(0,0,10,10,"#FF00FF");
+	var gameObj = new GameObj(x,y,t_arr);
+	proj_array.push(gameObj);
+}
+
+
+	var socket = new WebSocket("ws://localhost:8888/");
+//this is the global socket that the program uses for bi directional comunication
+	socket.onmessage = function msg(event)
+	{
+		split_data = event.data.split(' ');
+		switch (split_data[0])
+		{
+			case "MPL":
+				//force move the player to the new y or x position
+				console.log("moving player");
+				for (var i = 0; i < player_array.length;i++)
+				{
+					if (player_array[i].uname == split_data[1])
+					{
+						console.log("FOUND HIT " + i.toString());
+						force_move(Ctx,player_array[i].gameobj,parseFloat(split_data[2]),parseFloat(split_data[3]));
+							break;
+					}
+				}
+				break;
+			case "APL":
+				//only add new player when the player_array already has yourself stored in it
+				if (player_array.length > 0)
+				{
+					//add the player to the player_array with the specified cords
+					console.log("adding player");
+					var t = new Tile(0,0,20,20,"#00FF00");
+					var Go = new GameObj(parseInt(split_data[1]),parseInt(split_data[2]),[t]);
+					var P = new Plr(Go,split_data[3]);	
+					player_array.push(P);
+					draw(Ctx,player_array[player_array.length - 1].gameobj);
+					console.log(player_array.length);
+					break;
+				}
+			case "RMP":
+				console.log("removing player");
+				for (var i = 0; i < player_array.length ; i++)
+				{
+					console.log("i:" + i.toString());
+					if (player_array[i].uname == split_data[1])
+					{
+						console.log("FOND " + player_array[i].uname);
+						erase(Ctx,player_array[i].gameobj);
+						player_array.splice(i,1);
+						break;
+					}
+				}
+				break;
+			case "RM":
+				//remove an object at the specified id from the projectile array, using the safe remove function
+				//actualy we might not need to use a safe remove function here becuse the server is taking care of that
+				//for us
+				alert("removing proj");
+				proj_array.splice(parseInt(split_data[1]),1);
+				break;
+			case "MP":
+				alert("moving proj");
+				force_move(Ctx,proj_array[parseInt(split_data[1])],parseFloat(split_data[2]),parseFloat(split_data[3]));
+				//force move a projectile to the given position
+				break;
+			case "AP":
+				console.log("ADDING PROJECTILE");
+				//add a projectile at the given position
+				addProj(proj_array,parseFloat(split_data[1]),parseFloat(split_data[2]));
+				draw(Ctx,proj_array[proj_array.length - 1]);
+				break;
+			case "kb":
+				//TAG:3
+				for (var i = 1; i < 5;i++)
+				{
+					keybind[i-1] = Number(split_data[i]);
+				}
+				break;
+			case "s":
+				//add the player to the player_array with the specified cords
+				if (player_array.length == 0)
+				{
+					console.log("adding self");
+					var t = new Tile(0,0,20,20,"#FF0000");
+					var Go = new GameObj(parseInt(split_data[1]),parseInt(split_data[2]),[t]);
+					var P = new Plr(Go,uname);	
+					player_array.push(P);
+					draw(Ctx,player_array[player_array.length - 1].gameobj);
+					console.log(player_array.length);
+				}
+				break;
+				
+		}
+		console.log(event.data);
+	};
+	socket.onopen = function open(event)
+	{
+		console.log("opened");
+		//this is going to get the uname as input to send to the socket somehow, perhaps add a form to be filled out?
+		socket.send("J j0hn");
+	};
+	socket.onerror = function error(event)
+	{
+		console.log("ERROR");
+	};
+
+
+//we can get the mouse cords on move and click
+document.onclick =
+function test(event)
+{	mx = (event.clientX - canvas.offsetLeft);
+	my = (event.clientY - canvas.offsetTop);
+	//send the command to cast the selected spell on mouse click
+	socket.send("C " + spell + " " + mx.toString() + " " + my.toString());
+	console.log("test click! x:" + mx + " y:" + my);
+
+};
+document.onmousemove =
+function testmove(event)
+{
+	mx = (event.clientX - canvas.offsetLeft);
+        my = (event.clientY - canvas.offsetTop);
+        console.log("mouse move! x:" + mx + " y:" + my);
+
+};
+//this is a state variable that we use to get a falling edge detection from the onkeydown function
+//which is normaly a loop
+//perhaps we save the last key pressed?
+var down = 1
+//TAG!
+//this function translated between wasd keys and their respective keycodes
+function key2str(keyCode)
+{
+	if (keyCode == keybind[1])//65
+	{
+		return 'a';
+	}
+	if (keyCode == keybind[2])//83
+	{
+		return 's';
+	}
+	if (keyCode == keybind[3])//68
+	{
+		return 'd';
+	}
+	if (keyCode == keybind[0])//87
+	{
+		return 'w';
+	}
+	return -1
+}
+//send the move signal only if its the first time that a key has been pressed on the page
+document.onkeydown = 
+function CheckKeyDown(e)
+{
+	ltr=key2str(e.keyCode);
+	if ((ltr == 'w' || ltr == 'a' || ltr == 's' || ltr == 'd') && e.repeat == false)
+	{
+		//alert("SENDING!!!");
+		socket.send("M " + ltr);
+		down *= e.keyCode;
+	}
+
+};
+
+//if we get a key up reset the first time so that we can send the signal again, and ceese the movement that the key was doing
+document.onkeyup =
+function CheckKeyUp(e)
+{
+	ltr=key2str(e.keyCode);
+	if ((ltr == 'w' || ltr == 'a' || ltr == 's' || ltr == 'd'))
+	{
+		socket.send("UM " + ltr);
+		down *= e.keyCode;
+	}
+};
+document.onwheel = 
+function SwitchSpell(e)
+{
+	console.log("ROLLED")
+};
+/*
+	window.onload = 
+function init()
+{
+	socket.send("J j0hn");
+};
+*/
+main();
+</script>
